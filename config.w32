@@ -1,0 +1,7 @@
+ARG_ENABLE('duckdb', 'duckdb support', 'no');
+
+if (PHP_DUCKDB != 'no') {
+	AC_DEFINE('HAVE_DUCKDB', 1, 'duckdb support enabled');
+
+	EXTENSION('duckdb', 'duckdb.c', null, '/DZEND_ENABLE_STATIC_TSRMLS_CACHE=1');
+}
