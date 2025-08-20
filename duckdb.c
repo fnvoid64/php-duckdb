@@ -57,7 +57,6 @@ typedef struct _php_duckdb_udf
 {
 	zend_fcall_info fci;
 	zend_fcall_info_cache fcc;
-	duckdb_scalar_function *func;
 } php_duckdb_udf;
 
 typedef struct _php_duckdb_result_iterator
@@ -303,10 +302,6 @@ static void php_duckdb_udf_free(php_duckdb_udf *udf)
 	for (uint32_t i = 0; i < udf->fci.param_count; i++) {
 		zval_ptr_dtor(&udf->fci.params[i]);
 		efree(udf->fci.params);
-	}
-
-	if (udf->func) {
-		duckdb_destroy_scalar_function(udf->func);
 	}
 
 	efree(udf);
@@ -618,11 +613,9 @@ ZEND_METHOD(DuckDB_DuckDB, registerFunction)
 
 	Z_TRY_ADDREF_P(&udf->fci.function_name);
 
-	duckdb_scalar_function func = duckdb_create_scalar_function();
-	
-	udf->func = &func;
 	zend_hash_str_add_ptr(&self->udfs, name, name_len, udf);
 
+	duckdb_scalar_function func = duckdb_create_scalar_function();
 	duckdb_scalar_function_set_name(func, name);
 
 	for (uint32_t i = 0; i < zf->common.num_args; i++) {
@@ -641,9 +634,12 @@ ZEND_METHOD(DuckDB_DuckDB, registerFunction)
 
 	if (duckdb_register_scalar_function(self->conn, func) != DuckDBSuccess) {
 		zend_throw_exception_ex(php_duckdb_exception_ce, 0, "Could not register function: %s", name);
+		duckdb_destroy_scalar_function(&func);
 		RETURN_FALSE;
 	}
-	
+
+	duckdb_destroy_scalar_function(&func);
+
 	RETURN_TRUE;
 }
 
