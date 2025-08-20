@@ -726,7 +726,6 @@ ZEND_METHOD(DuckDB_Result, fetchOne)
 	if (!chunk) {
 		duckdb_destroy_data_chunk(&chunk);
 		RETURN_NULL();
-		return;
 	}
 
 	idx_t nrows = duckdb_data_chunk_get_size(chunk);
@@ -734,7 +733,6 @@ ZEND_METHOD(DuckDB_Result, fetchOne)
 	if (nrows == 0) {
 		duckdb_destroy_data_chunk(&chunk);
 		RETURN_NULL();
-		return;
 	}
 
 	idx_t ncols = duckdb_data_chunk_get_column_count(chunk);
@@ -867,12 +865,10 @@ ZEND_METHOD(DuckDB_ResultIterator, current)
 
 	if (!self->chunk) {
 		RETURN_NULL();
-		return;
 	}
 
 	if (self->row_count == 0) {
 		RETURN_NULL();
-		return;
 	}
 
 	if (self->assoc) {
