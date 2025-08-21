@@ -5,20 +5,20 @@
  * @undocumentable
  */
 
-namespace DuckDB {
+namespace Fnvoid\DuckDB {
     final class DuckDB 
     {
-        public function __construct(?string $db_file = null)
+        public function __construct(?string $db_file = null, array $config = [])
         {
             
         }
 
-        public function query(string $sql): ?Result
+        public function query(string $sql): Result
         {
 
         }
 
-        public function prepare(string $sql): ?Statement
+        public function prepare(string $sql): Statement
         {
             
         }
@@ -26,6 +26,11 @@ namespace DuckDB {
         public function registerFunction(string $name, callable $func): bool
         {
             
+        }
+
+        public function createAppender(string $table): Appender
+        {
+
         }
     }
 
@@ -77,7 +82,19 @@ namespace DuckDB {
 
     final class Statement
     {
-        public function execute(array $values): ?Result
+        public function execute(array $values): Result
+        {
+
+        }
+    }
+
+    final class Appender
+    {
+        public function appendRow(array $row): bool {
+
+        }
+
+        public function flush(): void
         {
 
         }

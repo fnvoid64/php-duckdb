@@ -10,8 +10,8 @@
 #include "duckdb_arginfo.h"
 #include "zend_exceptions.h"
 #include "duckdb.h"
-#include "pthread.h"
 #include "zend_interfaces.h"
+#include <string.h>
 
 /* For compatibility with older PHP versions */
 #ifndef ZEND_PARSE_PARAMETERS_NONE
@@ -25,18 +25,19 @@ static zend_class_entry *php_duckdb_exception_ce;
 static zend_class_entry *php_duckdb_result_ce;
 static zend_class_entry *php_duckdb_statement_ce;
 static zend_class_entry *php_duckdb_result_iterator_ce;
+static zend_class_entry *php_duckdb_appender_ce;
 
 static zend_object_handlers php_duckdb_object_handlers;
 static zend_object_handlers php_duckdb_result_handlers;
 static zend_object_handlers php_duckdb_statement_handlers;
 static zend_object_handlers php_duckdb_result_iterator_handlers;
-
-static pthread_mutex_t php_duckdb_udf_lock;
+static zend_object_handlers php_duckdb_appender_handlers;
 
 typedef struct _php_duckdb_object
 {
 	duckdb_connection conn;
 	duckdb_database db;
+	uint32_t threads;
 	HashTable udfs;
 	zend_object std;
 } php_duckdb_object;
@@ -72,10 +73,17 @@ typedef struct _php_duckdb_result_iterator
 	zend_object std;
 } php_duckdb_result_iterator;
 
+typedef struct _php_duckdb_appender
+{
+	duckdb_appender appender;
+	zend_object std;
+} php_duckdb_appender;
+
 #define Z_DUCKDB_P(zv) ((php_duckdb_object *)((char *)(Z_OBJ_P(zv)) - XtOffsetOf(php_duckdb_object, std)))
 #define Z_DUCKDB_RESULT_P(zv) ((php_duckdb_result *)((char *)(Z_OBJ_P(zv)) - XtOffsetOf(php_duckdb_result, std)))
 #define Z_DUCKDB_STATEMENT_P(zv) ((php_duckdb_statement *)((char *)(Z_OBJ_P(zv)) - XtOffsetOf(php_duckdb_statement, std)))
 #define Z_DUCKDB_RESULT_ITERATOR_P(zv) ((php_duckdb_result_iterator *)((char *)(Z_OBJ_P(zv)) - XtOffsetOf(php_duckdb_result_iterator, std)))
+#define Z_DUCKDB_APPENDER_P(zv) ((php_duckdb_appender *)((char *)(Z_OBJ_P(zv)) - XtOffsetOf(php_duckdb_appender, std)))
 
 static duckdb_logical_type php_duckdb_zval_to_logical_type(zend_uchar t)
 {
@@ -399,31 +407,51 @@ static void php_duckdb_result_iterator_free(zend_object *object)
 	zend_object_std_dtor(&obj->std);
 }
 
+static zend_object *php_duckdb_appender_new(zend_class_entry *ce)
+{
+	php_duckdb_appender *obj = zend_object_alloc(sizeof(php_duckdb_appender), ce);
+
+	zend_object_std_init(&obj->std, ce);
+	object_properties_init(&obj->std, ce);
+
+	obj->std.handlers = &php_duckdb_appender_handlers;
+	return &obj->std;
+}
+
+static void php_duckdb_appender_free(zend_object *object)
+{
+	php_duckdb_appender *obj = (php_duckdb_appender *)((char*)object - php_duckdb_appender_handlers.offset);
+
+	if (obj->appender) {
+		duckdb_appender_close(obj->appender);
+		duckdb_appender_destroy(&obj->appender);
+	}
+
+	zend_object_std_dtor(&obj->std);
+}
+
 static void php_duckdb_udf_callback(duckdb_function_info info, duckdb_data_chunk input, duckdb_vector output)
 {
-	pthread_mutex_lock(&php_duckdb_udf_lock);
 	php_duckdb_udf *udf = (php_duckdb_udf *)duckdb_scalar_function_get_extra_info(info);
 
 	if (!udf) {
 		duckdb_scalar_function_set_error(info, "Internal function error: could not retrieve function call data.");
-		pthread_mutex_unlock(&php_duckdb_udf_lock);
         return;
 	}
 
 	idx_t nrows = duckdb_data_chunk_get_size(input);
 
 	if (nrows == 0) {
-		pthread_mutex_unlock(&php_duckdb_udf_lock);
 		return;
 	}
 
 	idx_t ncols = duckdb_data_chunk_get_column_count(input);
 
-	for (idx_t r = 0; r < nrows; r++) {
-		zend_fcall_info fci = udf->fci;
-		fci.param_count = ncols;
-		fci.params = safe_emalloc(sizeof(zval), ncols, 0);
+	zend_fcall_info fci = udf->fci;
+	fci.param_count = ncols;
+	fci.params = safe_emalloc(sizeof(zval), ncols, 0);
 
+	for (idx_t r = 0; r < nrows; r++) {
 		for (idx_t c = 0; c < ncols; c++) {
 			duckdb_vector v = duckdb_data_chunk_get_vector(input, c);
 			duckdb_logical_type lt = duckdb_vector_get_column_type(v);
@@ -450,7 +478,7 @@ static void php_duckdb_udf_callback(duckdb_function_info info, duckdb_data_chunk
 				efree(fci.params);
 			}
 
-			pthread_mutex_unlock(&php_duckdb_udf_lock);
+			zval_ptr_dtor(&retval);
 
 			return;
 		}
@@ -461,7 +489,8 @@ static void php_duckdb_udf_callback(duckdb_function_info info, duckdb_data_chunk
 				efree(fci.params);
 			}
 
-			pthread_mutex_unlock(&php_duckdb_udf_lock);
+			zval_ptr_dtor(&retval);
+
 			return;
 		}
 
@@ -511,34 +540,84 @@ static void php_duckdb_udf_callback(duckdb_function_info info, duckdb_data_chunk
 			efree(fci.params);
 		}
 		
-		pthread_mutex_unlock(&php_duckdb_udf_lock);
+		zval_ptr_dtor(&retval);
+	}
+
+	if (fci.params) {
+		efree(fci.params);
 	}
 }
 
-ZEND_METHOD(DuckDB_DuckDB, __construct)
+ZEND_METHOD(Fnvoid_DuckDB_DuckDB, __construct)
 {
 	php_duckdb_object *self = Z_DUCKDB_P(ZEND_THIS);
 	char *db_file = NULL;
 	size_t db_file_len;
+	zval *param_configs = NULL;
 
-	ZEND_PARSE_PARAMETERS_START(0,1)
+	ZEND_PARSE_PARAMETERS_START(0,2)
 		Z_PARAM_OPTIONAL
 		Z_PARAM_STRING_OR_NULL(db_file, db_file_len)
+		Z_PARAM_OPTIONAL
+		Z_PARAM_ARRAY(param_configs)
 	ZEND_PARSE_PARAMETERS_END();
 
-	if (duckdb_open(db_file, &self->db) == DuckDBError) {
-		zend_throw_exception(php_duckdb_exception_ce, "Could not open database file", 0);
-		RETURN_NULL();
+	duckdb_config config;
+	self->threads = 0;
+
+	if (duckdb_create_config(&config) == DuckDBError) {
+		zend_throw_exception(php_duckdb_exception_ce, "Config init failed", 0);
+		duckdb_destroy_config(&config);
+		RETURN_THROWS();
+	}
+
+	if (param_configs != NULL) {
+		HashTable *z_configs = Z_ARRVAL_P(param_configs);
+		zend_string *key;
+		zval *val;
+		
+		if (zend_hash_num_elements(z_configs) > 0) {
+			ZEND_HASH_FOREACH_STR_KEY_VAL(z_configs, key, val) {
+				const char *c_name = ZSTR_VAL(key);
+				zend_string *val_str = zval_get_string(val);
+				const char *c_val = ZSTR_VAL(val_str);
+
+				if (duckdb_set_config(config, c_name, c_val) == DuckDBError) {
+					zend_throw_exception_ex(php_duckdb_exception_ce, 0, "Failed to set config: '%s' = '%s'", c_name, c_val);
+					duckdb_destroy_config(&config);
+					RETURN_THROWS();
+				}
+
+				if (c_name && strcmp(c_name, "threads") == 0) {
+					self->threads = Z_LVAL_P(val);
+				}
+			} ZEND_HASH_FOREACH_END();
+		}
+	}
+
+	char *db_open_err = NULL;
+	if (duckdb_open_ext(db_file, &self->db, config, &db_open_err) == DuckDBError) {
+		zend_throw_exception_ex(php_duckdb_exception_ce, 0, "DB Open Error: %s", db_open_err);
+		duckdb_destroy_config(&config);
+		duckdb_free(db_open_err);
+		RETURN_THROWS();
+	}
+
+	if (db_open_err != NULL) {
+		duckdb_free(db_open_err);
 	}
 
 	if (duckdb_connect(self->db, &self->conn) == DuckDBError) {
+		duckdb_destroy_config(&config);
 		duckdb_close(&self->db);
 		zend_throw_exception(php_duckdb_exception_ce, "Could not connect to database", 0);
-		RETURN_NULL();
+		RETURN_THROWS();
 	}
+
+	duckdb_destroy_config(&config);
 }
 
-ZEND_METHOD(DuckDB_DuckDB, query)
+ZEND_METHOD(Fnvoid_DuckDB_DuckDB, query)
 {
 	php_duckdb_object *self = Z_DUCKDB_P(ZEND_THIS);
 	char *sql;
@@ -553,11 +632,11 @@ ZEND_METHOD(DuckDB_DuckDB, query)
 
 	if (duckdb_query(self->conn, sql, &res->res) != DuckDBSuccess) {
         zend_throw_exception(php_duckdb_exception_ce, duckdb_result_error(&res->res), 0);
-        RETURN_NULL();
+        RETURN_THROWS();
     }
 }
 
-ZEND_METHOD(DuckDB_DuckDB, prepare)
+ZEND_METHOD(Fnvoid_DuckDB_DuckDB, prepare)
 {
 	php_duckdb_object *self = Z_DUCKDB_P(ZEND_THIS);
 	char *sql;
@@ -572,11 +651,11 @@ ZEND_METHOD(DuckDB_DuckDB, prepare)
 
 	if (duckdb_prepare(self->conn, sql, &stmt->stmt) == DuckDBError) {
 		zend_throw_exception(php_duckdb_exception_ce, duckdb_prepare_error(stmt->stmt), 0);
-        RETURN_NULL();
+        RETURN_THROWS();
 	}
 }
 
-ZEND_METHOD(DuckDB_DuckDB, registerFunction)
+ZEND_METHOD(Fnvoid_DuckDB_DuckDB, registerFunction)
 {
 	php_duckdb_object *self = Z_DUCKDB_P(ZEND_THIS);
 	char *name;
@@ -588,6 +667,11 @@ ZEND_METHOD(DuckDB_DuckDB, registerFunction)
 		Z_PARAM_STRING(name, name_len)
 		Z_PARAM_FUNC(fci, fcc)
 	ZEND_PARSE_PARAMETERS_END();
+
+	if (self->threads != 1) {
+		zend_throw_exception(php_duckdb_exception_ce, "Please set threads = 1 to use user functions", 0);
+		RETURN_THROWS();
+	}
 
 	if (zend_hash_str_exists(&self->udfs, name, name_len)) {
 		zend_throw_exception_ex(php_duckdb_exception_ce, 0, "Function: %s is already registered", name);
@@ -643,7 +727,27 @@ ZEND_METHOD(DuckDB_DuckDB, registerFunction)
 	RETURN_TRUE;
 }
 
-ZEND_METHOD(DuckDB_Result, fetchAll)
+ZEND_METHOD(Fnvoid_DuckDB_DuckDB, createAppender)
+{
+	char *table;
+	size_t table_len;
+
+	ZEND_PARSE_PARAMETERS_START(1,1)
+		Z_PARAM_STRING(table, table_len);
+	ZEND_PARSE_PARAMETERS_END();
+
+	php_duckdb_object *self = Z_DUCKDB_P(ZEND_THIS);
+
+	object_init_ex(return_value, php_duckdb_appender_ce);
+	php_duckdb_appender *appender = Z_DUCKDB_APPENDER_P(return_value);
+
+	if (duckdb_appender_create(self->conn, NULL, table, &appender->appender) == DuckDBError) {
+		zend_throw_exception_ex(php_duckdb_exception_ce, 0, "Appender Error: %s", duckdb_appender_error(appender->appender));
+		RETURN_THROWS();
+	}
+}
+
+ZEND_METHOD(Fnvoid_DuckDB_Result, fetchAll)
 {
 	php_duckdb_result *self = Z_DUCKDB_RESULT_P(ZEND_THIS);
 	bool assoc = false;
@@ -652,6 +756,11 @@ ZEND_METHOD(DuckDB_Result, fetchAll)
 		Z_PARAM_OPTIONAL
 		Z_PARAM_BOOL(assoc)
 	ZEND_PARSE_PARAMETERS_END();
+
+	if (self->res.internal_data == NULL) {
+		zend_throw_exception(php_duckdb_exception_ce, "Result is not initialized yet", 0);
+		RETURN_THROWS();
+	}
 
 	array_init(return_value);
 
@@ -711,7 +820,7 @@ ZEND_METHOD(DuckDB_Result, fetchAll)
 	}
 }
 
-ZEND_METHOD(DuckDB_Result, fetchOne)
+ZEND_METHOD(Fnvoid_DuckDB_Result, fetchOne)
 {
 	php_duckdb_result *self = Z_DUCKDB_RESULT_P(ZEND_THIS);
 	bool assoc = false;
@@ -720,6 +829,11 @@ ZEND_METHOD(DuckDB_Result, fetchOne)
 		Z_PARAM_OPTIONAL
 		Z_PARAM_BOOL(assoc)
 	ZEND_PARSE_PARAMETERS_END();
+
+	if (self->res.internal_data == NULL) {
+		zend_throw_exception(php_duckdb_exception_ce, "Result is not initialized yet", 0);
+		RETURN_THROWS();
+	}
 
 	duckdb_data_chunk chunk = duckdb_fetch_chunk(self->res);
 
@@ -768,7 +882,7 @@ ZEND_METHOD(DuckDB_Result, fetchOne)
 	duckdb_destroy_data_chunk(&chunk);
 }
 
-ZEND_METHOD(DuckDB_Result, iterate)
+ZEND_METHOD(Fnvoid_DuckDB_Result, iterate)
 {
 	php_duckdb_result *self = Z_DUCKDB_RESULT_P(ZEND_THIS);
 	bool assoc;
@@ -777,6 +891,11 @@ ZEND_METHOD(DuckDB_Result, iterate)
 		Z_PARAM_OPTIONAL
 		Z_PARAM_BOOL(assoc)
 	ZEND_PARSE_PARAMETERS_END();
+
+	if (self->res.internal_data == NULL) {
+		zend_throw_exception(php_duckdb_exception_ce, "Result is not initialized yet", 0);
+		RETURN_THROWS();
+	}
 
 	object_init_ex(return_value, php_duckdb_result_iterator_ce);
 	php_duckdb_result_iterator *it = Z_DUCKDB_RESULT_ITERATOR_P(return_value);
@@ -795,18 +914,24 @@ ZEND_METHOD(DuckDB_Result, iterate)
 	}
 }
 
-ZEND_METHOD(DuckDB_Statement, execute)
+ZEND_METHOD(Fnvoid_DuckDB_Statement, execute)
 {
-	php_duckdb_statement *self = Z_DUCKDB_STATEMENT_P(ZEND_THIS);
 	zval *values;
 
 	ZEND_PARSE_PARAMETERS_START(1, 1)
 		Z_PARAM_ARRAY(values)
 	ZEND_PARSE_PARAMETERS_END();
 
+	php_duckdb_statement *self = Z_DUCKDB_STATEMENT_P(ZEND_THIS);
+
+	if (!self->stmt) {
+		zend_throw_exception(php_duckdb_exception_ce, "Statement is not initialized yet", 0);
+		RETURN_THROWS();
+	}
+
 	HashTable *params = Z_ARRVAL_P(values);
 	zval *val;
-	int param_idx = 1;
+	idx_t param_idx = 1;
 
 	ZEND_HASH_FOREACH_VAL(params, val) {
 		switch (Z_TYPE_P(val)) {
@@ -844,24 +969,34 @@ ZEND_METHOD(DuckDB_Statement, execute)
 
 	if (duckdb_execute_prepared(self->stmt, &res->res) == DuckDBError) {
         zend_throw_exception(php_duckdb_exception_ce, duckdb_result_error(&res->res), 0);
-        RETURN_NULL();
+        RETURN_THROWS();
     }
 }
 
-ZEND_METHOD(DuckDB_ResultIterator, rewind)
+ZEND_METHOD(Fnvoid_DuckDB_ResultIterator, rewind)
 {
 	php_duckdb_result_iterator *self = Z_DUCKDB_RESULT_ITERATOR_P(ZEND_THIS);
 
 	ZEND_PARSE_PARAMETERS_NONE();
+
+	if (!self->res) {
+		zend_throw_exception(php_duckdb_exception_ce, "Result is not initialized yet", 0);
+		RETURN_THROWS();
+	}
 
 	self->row_idx = 0;
 }
 
-ZEND_METHOD(DuckDB_ResultIterator, current)
+ZEND_METHOD(Fnvoid_DuckDB_ResultIterator, current)
 {
 	php_duckdb_result_iterator *self = Z_DUCKDB_RESULT_ITERATOR_P(ZEND_THIS);
 
 	ZEND_PARSE_PARAMETERS_NONE();
+
+	if (!self->res) {
+		zend_throw_exception(php_duckdb_exception_ce, "Result is not initialized yet", 0);
+		RETURN_THROWS();
+	}
 
 	if (!self->chunk) {
 		RETURN_NULL();
@@ -900,20 +1035,30 @@ ZEND_METHOD(DuckDB_ResultIterator, current)
 	}
 }
 
-ZEND_METHOD(DuckDB_ResultIterator, key)
+ZEND_METHOD(Fnvoid_DuckDB_ResultIterator, key)
 {
 	php_duckdb_result_iterator *self = Z_DUCKDB_RESULT_ITERATOR_P(ZEND_THIS);
 
 	ZEND_PARSE_PARAMETERS_NONE();
+
+	if (!self->res) {
+		zend_throw_exception(php_duckdb_exception_ce, "Result is not initialized yet", 0);
+		RETURN_THROWS();
+	}
 
 	RETURN_LONG(self->key);
 }
 
-ZEND_METHOD(DuckDB_ResultIterator, next)
+ZEND_METHOD(Fnvoid_DuckDB_ResultIterator, next)
 {
 	php_duckdb_result_iterator *self = Z_DUCKDB_RESULT_ITERATOR_P(ZEND_THIS);
 
 	ZEND_PARSE_PARAMETERS_NONE();
+
+	if (!self->res) {
+		zend_throw_exception(php_duckdb_exception_ce, "Result is not initialized yet", 0);
+		RETURN_THROWS();
+	}
 
 	self->row_idx++;
 	self->key++;
@@ -932,13 +1077,84 @@ ZEND_METHOD(DuckDB_ResultIterator, next)
 	}
 }
 
-ZEND_METHOD(DuckDB_ResultIterator, valid)
+ZEND_METHOD(Fnvoid_DuckDB_ResultIterator, valid)
 {
 	php_duckdb_result_iterator *self = Z_DUCKDB_RESULT_ITERATOR_P(ZEND_THIS);
 
 	ZEND_PARSE_PARAMETERS_NONE();
 
+	if (!self->res) {
+		zend_throw_exception(php_duckdb_exception_ce, "Result is not initialized yet", 0);
+		RETURN_THROWS();
+	}
+
 	ZVAL_BOOL(return_value, self->valid);
+}
+
+ZEND_METHOD(Fnvoid_DuckDB_Appender, appendRow)
+{
+	zval *param_row;
+
+	ZEND_PARSE_PARAMETERS_START(1,1)
+		Z_PARAM_ARRAY(param_row)
+	ZEND_PARSE_PARAMETERS_END();
+
+	php_duckdb_appender *self = Z_DUCKDB_APPENDER_P(ZEND_THIS);
+
+	if (!self->appender) {
+		zend_throw_exception(php_duckdb_exception_ce, "Appender is not initialized yet", 0);
+		RETURN_THROWS();
+	}
+
+	HashTable *row = Z_ARRVAL_P(param_row);
+	zval *val;
+
+	ZEND_HASH_FOREACH_VAL(row, val) {
+		switch (Z_TYPE_P(val)) {
+            case IS_NULL:
+				duckdb_append_null(self->appender);
+                break;
+
+            case IS_LONG:
+				duckdb_append_int64(self->appender, Z_LVAL_P(val));
+                break;
+
+            case IS_DOUBLE:
+				duckdb_append_double(self->appender, Z_DVAL_P(val));
+                break;
+
+            case IS_STRING:
+				duckdb_append_varchar_length(self->appender, Z_STRVAL_P(val), Z_STRLEN_P(val));
+                break;
+
+            case IS_TRUE:
+            case IS_FALSE:
+				duckdb_append_bool(self->appender, (Z_TYPE_P(val) == IS_TRUE));
+                break;
+
+            default:
+                zend_throw_exception(php_duckdb_exception_ce, "Unsupported data type passed, allowed (string, int, float, double, bool, null)", 0);
+                RETURN_THROWS();
+        }
+	} ZEND_HASH_FOREACH_END();
+
+	if (duckdb_appender_end_row(self->appender) == DuckDBError) {
+		zend_throw_exception_ex(php_duckdb_exception_ce, 0, "Appending error: %s", duckdb_appender_error(self->appender));
+		RETURN_FALSE;
+	}
+
+	RETURN_TRUE;
+}
+
+ZEND_METHOD(Fnvoid_DuckDB_Appender, flush)
+{
+	php_duckdb_appender *self = Z_DUCKDB_APPENDER_P(ZEND_THIS);
+
+	ZEND_PARSE_PARAMETERS_NONE();
+
+	if (duckdb_appender_flush(self->appender) == DuckDBError) {
+		zend_throw_exception_ex(php_duckdb_exception_ce, 0, "Flush Error: %s", duckdb_appender_error(self->appender));
+	}
 }
 
 PHP_MINIT_FUNCTION(duckdb)
@@ -959,30 +1175,31 @@ PHP_MINIT_FUNCTION(duckdb)
 	php_duckdb_result_iterator_handlers.offset = XtOffsetOf(php_duckdb_result_iterator, std);
 	php_duckdb_result_iterator_handlers.free_obj = php_duckdb_result_iterator_free;
 
-	php_duckdb_exception_ce = register_class_DuckDB_Exception(zend_ce_exception);
+	memcpy(&php_duckdb_appender_handlers, &std_object_handlers, sizeof(zend_object_handlers));
+	php_duckdb_appender_handlers.offset = XtOffsetOf(php_duckdb_appender, std);
+	php_duckdb_appender_handlers.free_obj = php_duckdb_appender_free;
 
-	php_duckdb_object_ce = register_class_DuckDB_DuckDB();
+	php_duckdb_exception_ce = register_class_Fnvoid_DuckDB_Exception(zend_ce_exception);
+
+	php_duckdb_object_ce = register_class_Fnvoid_DuckDB_DuckDB();
 	php_duckdb_object_ce->create_object = php_duckdb_object_new;
 
-	php_duckdb_result_ce = register_class_DuckDB_Result();
+	php_duckdb_result_ce = register_class_Fnvoid_DuckDB_Result();
 	php_duckdb_result_ce->create_object = php_duckdb_result_new;
 
-	php_duckdb_statement_ce = register_class_DuckDB_Statement();
+	php_duckdb_statement_ce = register_class_Fnvoid_DuckDB_Statement();
 	php_duckdb_statement_ce->create_object = php_duckdb_statement_new;
 
-	php_duckdb_result_iterator_ce = register_class_DuckDB_ResultIterator(zend_ce_iterator);
+	php_duckdb_result_iterator_ce = register_class_Fnvoid_DuckDB_ResultIterator(zend_ce_iterator);
 	php_duckdb_result_iterator_ce->create_object = php_duckdb_result_iterator_new;
 
-	pthread_mutex_init(&php_duckdb_udf_lock, NULL);
+	php_duckdb_appender_ce = register_class_Fnvoid_DuckDB_Appender();
+	php_duckdb_appender_ce->create_object = php_duckdb_appender_new;
+
 
 	return SUCCESS;
 }
 
-PHP_MSHUTDOWN_FUNCTION(duckdb)
-{
-	pthread_mutex_destroy(&php_duckdb_udf_lock);
-    return SUCCESS;
-}
 
 PHP_RINIT_FUNCTION(duckdb)
 {
@@ -1005,7 +1222,7 @@ zend_module_entry duckdb_module_entry = {
 	"duckdb",					/* Extension name */
 	NULL,						/* zend_function_entry */
 	PHP_MINIT(duckdb),			/* PHP_MINIT - Module initialization */
-	PHP_MSHUTDOWN(duckdb),		/* PHP_MSHUTDOWN - Module shutdown */
+	NULL,						/* PHP_MSHUTDOWN - Module shutdown */
 	PHP_RINIT(duckdb),			/* PHP_RINIT - Request initialization */
 	NULL,						/* PHP_RSHUTDOWN - Request shutdown */
 	PHP_MINFO(duckdb),			/* PHP_MINFO - Module info */
