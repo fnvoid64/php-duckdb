@@ -1,5 +1,5 @@
 --TEST--
-Check if duckdb is loaded
+Test extension loaded
 --EXTENSIONS--
 duckdb
 --FILE--

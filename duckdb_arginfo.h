@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 0fd9dbd1e2d3fd35ff0794232e1bd73a0c0d7443 */
+ * Stub hash: a55be721db960c1694edd5943cf2e046ded71774 */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_Fnvoid_DuckDB_DuckDB___construct, 0, 0, 0)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, db_file, IS_STRING, 1, "null")
@@ -21,6 +21,9 @@ ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_OBJ_INFO_EX(arginfo_class_Fnvoid_DuckDB_DuckDB_createAppender, 0, 1, Fnvoid\\DuckDB\\Appender, 0)
 	ZEND_ARG_TYPE_INFO(0, table, IS_STRING, 0)
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Fnvoid_DuckDB_DuckDB_duckDBVersion, 0, 0, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Fnvoid_DuckDB_Result_fetchAll, 0, 0, IS_ARRAY, 0)
@@ -65,6 +68,7 @@ ZEND_METHOD(Fnvoid_DuckDB_DuckDB, query);
 ZEND_METHOD(Fnvoid_DuckDB_DuckDB, prepare);
 ZEND_METHOD(Fnvoid_DuckDB_DuckDB, registerFunction);
 ZEND_METHOD(Fnvoid_DuckDB_DuckDB, createAppender);
+ZEND_METHOD(Fnvoid_DuckDB_DuckDB, duckDBVersion);
 ZEND_METHOD(Fnvoid_DuckDB_Result, fetchAll);
 ZEND_METHOD(Fnvoid_DuckDB_Result, fetchOne);
 ZEND_METHOD(Fnvoid_DuckDB_Result, iterate);
@@ -84,6 +88,7 @@ static const zend_function_entry class_Fnvoid_DuckDB_DuckDB_methods[] = {
 	ZEND_ME(Fnvoid_DuckDB_DuckDB, prepare, arginfo_class_Fnvoid_DuckDB_DuckDB_prepare, ZEND_ACC_PUBLIC)
 	ZEND_ME(Fnvoid_DuckDB_DuckDB, registerFunction, arginfo_class_Fnvoid_DuckDB_DuckDB_registerFunction, ZEND_ACC_PUBLIC)
 	ZEND_ME(Fnvoid_DuckDB_DuckDB, createAppender, arginfo_class_Fnvoid_DuckDB_DuckDB_createAppender, ZEND_ACC_PUBLIC)
+	ZEND_ME(Fnvoid_DuckDB_DuckDB, duckDBVersion, arginfo_class_Fnvoid_DuckDB_DuckDB_duckDBVersion, ZEND_ACC_PUBLIC)
 	ZEND_FE_END
 };
 

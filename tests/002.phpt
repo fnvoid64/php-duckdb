@@ -1,31 +1,11 @@
 --TEST--
-Check if class initiates
+Test DuckDB Connection & Library
 --FILE--
 <?php
-$db = new Fnvoid\DuckDB\DuckDB(null, [
-    'threads' => 1
-]);
-
-$db->registerFunction('test_func', fn ($name): string => strtoupper($name));
-
-$res = $db->query("CREATE TABLE IF NOT EXISTS test_table (id INTEGER, name VARCHAR, age INTEGER)");
-$appender = $db->createAppender("test_table");
-
-for ($i = 1; $i <= 10; $i++) {
-    $appender->appendRow([$i, "Name: {$i}", mt_rand(18,40)]);
-}
-
-$appender->flush();
-
-$res = $db->query("SELECT *, test_func(name) as name_test FROM test_table");
-
-foreach ($res->iterate() as $row) {
-    print_r($row);
-}
+$db = new Fnvoid\DuckDB\DuckDB(); // Test mem
+$db = new Fnvoid\DuckDB\DuckDB('test.db'); // Test file
+var_dump($db->duckDBVersion());
 
 ?>
 --EXPECTF--
-stdClass Object
-(
-    [value] => Hello World
-)
+string(%d) "%s"

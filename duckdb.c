@@ -747,6 +747,12 @@ ZEND_METHOD(Fnvoid_DuckDB_DuckDB, createAppender)
 	}
 }
 
+ZEND_METHOD(Fnvoid_DuckDB_DuckDB, duckDBVersion)
+{
+	ZEND_PARSE_PARAMETERS_NONE();
+	RETVAL_STRING(duckdb_library_version());
+}
+
 ZEND_METHOD(Fnvoid_DuckDB_Result, fetchAll)
 {
 	php_duckdb_result *self = Z_DUCKDB_RESULT_P(ZEND_THIS);

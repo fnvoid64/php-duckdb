@@ -32,6 +32,11 @@ namespace Fnvoid\DuckDB {
         {
 
         }
+
+        public function duckDBVersion(): string
+        {
+
+        }
     }
 
     final class Result
