@@ -28,7 +28,84 @@ This extension delivers fast on‑disk and in‑memory SQL, **prepared statement
 
 ## Installation
 
-I am working on a simple installation script.
+### DuckDB PHP Extension Installation Guide
+
+This guide explains how to install DuckDB and compile the PHP extension on Linux. Pre-built binaries will be provided in the future for easier installation.
+
+---
+
+#### 1. Install DuckDB
+
+##### x86\_64
+
+```bash
+wget https://github.com/duckdb/duckdb/releases/download/v1.3.2/libduckdb-linux-amd64.zip
+sudo unzip libduckdb-linux-amd64.zip duckdb.h -d /usr/local/include/
+sudo unzip libduckdb-linux-amd64.zip libduckdb.so -d /usr/local/lib/
+rm libduckdb-linux-amd64.zip
+sudo ldconfig
+```
+
+##### arm64
+
+```bash
+wget https://github.com/duckdb/duckdb/releases/download/v1.3.2/libduckdb-linux-arm64.zip
+sudo unzip libduckdb-linux-arm64.zip duckdb.h -d /usr/local/include/
+sudo unzip libduckdb-linux-arm64.zip libduckdb.so -d /usr/local/lib/
+rm libduckdb-linux-arm64.zip
+```
+
+> ⚠️ Make sure the architecture of the DuckDB binary matches your system.
+
+---
+
+#### 2. Install Necessary Build Tools
+
+##### Ubuntu / Debian
+
+```bash
+sudo apt update
+sudo apt install -y build-essential autoconf automake bison flex re2c gdb \
+libtool make pkg-config valgrind git libxml2-dev libsqlite3-dev php-dev \
+zlib1g-dev libssl-dev
+```
+
+##### RedHat / Fedora
+
+```bash
+sudo dnf install -y gcc gcc-c++ binutils glibc-devel autoconf automake bison \
+flex re2c gdb libtool make pkgconf valgrind git libxml2-devel libsqlite3x-devel \
+zlib-devel openssl-devel php-devel
+```
+
+> These packages cover common compilation requirements. Additional dependencies may be required depending on your PHP configuration.
+
+---
+
+#### 3. Compile the PHP Extension
+
+```bash
+git clone https://github.com/fnvoid64/php-duckdb.git
+cd php-duckdb
+phpize
+./configure
+make
+make test
+sudo make install
+```
+
+> After installation, enable the extension in your `php.ini`:
+
+```ini
+extension=duckdb.so
+```
+
+---
+
+#### 4. Future Plans
+
+Pre-built binaries for popular Linux distributions and architectures will be published soon, making installation much simpler without compiling from source.
+
 
 ## Creating a Connection
 
