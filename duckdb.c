@@ -469,8 +469,9 @@ static void php_duckdb_udf_callback(duckdb_function_info info, duckdb_data_chunk
 		}
 
 		zval retval;
+		fci.retval = &retval;
 
-		if (zend_call_function_with_return_value(&fci, &udf->fcc, &retval) != SUCCESS) {
+		if (zend_call_function(&fci, &udf->fcc) != SUCCESS) {
 			duckdb_scalar_function_set_error(info, "PHP Function call failed");
 			
 			for (uint32_t i = 0; i < fci.param_count; i++) {
