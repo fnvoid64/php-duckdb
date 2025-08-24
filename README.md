@@ -36,6 +36,10 @@ This guide explains how to install DuckDB and compile the PHP extension on Linux
 
 #### 1. Install DuckDB
 
+> ⚠️ This extension is supported on **php 8.0** and above.
+
+---
+
 ##### x86\_64
 
 ```bash
@@ -65,16 +69,17 @@ rm libduckdb-linux-arm64.zip
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential autoconf automake bison flex re2c gdb \
-libtool make pkg-config valgrind git libxml2-dev libsqlite3-dev php-dev \
+sudo apt install -y build-essential autoconf automake bison flex gdb \
+libtool make pkg-config valgrind git libxml2-dev php-dev \
 zlib1g-dev libssl-dev
 ```
 
 ##### RedHat / Fedora
 
 ```bash
+sudo dnf update
 sudo dnf install -y gcc gcc-c++ binutils glibc-devel autoconf automake bison \
-flex re2c gdb libtool make pkgconf valgrind git libxml2-devel libsqlite3x-devel \
+flex gdb libtool make pkgconf valgrind git libxml2-devel \
 zlib-devel openssl-devel php-devel
 ```
 
