@@ -57,6 +57,7 @@ wget https://github.com/duckdb/duckdb/releases/download/v1.3.2/libduckdb-linux-a
 sudo unzip libduckdb-linux-arm64.zip duckdb.h -d /usr/local/include/
 sudo unzip libduckdb-linux-arm64.zip libduckdb.so -d /usr/local/lib/
 rm libduckdb-linux-arm64.zip
+sudo ldconfig
 ```
 
 > ⚠️ Make sure the architecture of the DuckDB binary matches your system.
