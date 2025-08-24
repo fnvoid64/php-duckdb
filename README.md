@@ -32,13 +32,29 @@ This extension delivers fast on‑disk and in‑memory SQL, **prepared statement
 
 This guide explains how to install DuckDB and compile the PHP extension on Linux. Pre-built binaries will be provided in the future for easier installation.
 
----
-
-#### 1. Install DuckDB
-
-> ⚠️ This extension is supported on **php 8.0** and above.
+> ⚠️ This extension is supported on **PHP 8.0** and above.
 
 ---
+
+#### 1. Install Necessary Build Tools
+
+##### Ubuntu / Debian
+
+```bash
+sudo apt update
+sudo apt install -y php-dev build-essential git wget unzip
+```
+
+##### RedHat / Fedora / CentOS / AlmaLinux
+
+```bash
+sudo dnf update -y
+sudo dnf install -y php-devel gcc make git wget unzip
+```
+
+---
+
+#### 2. Install DuckDB
 
 ##### x86\_64
 
@@ -61,30 +77,6 @@ sudo ldconfig
 ```
 
 > ⚠️ Make sure the architecture of the DuckDB binary matches your system.
-
----
-
-#### 2. Install Necessary Build Tools
-
-##### Ubuntu / Debian
-
-```bash
-sudo apt update
-sudo apt install -y build-essential autoconf automake bison flex gdb \
-libtool make pkg-config valgrind git libxml2-dev php-dev \
-zlib1g-dev libssl-dev
-```
-
-##### RedHat / Fedora
-
-```bash
-sudo dnf update
-sudo dnf install -y gcc gcc-c++ binutils glibc-devel autoconf automake bison \
-flex gdb libtool make pkgconf valgrind git libxml2-devel \
-zlib-devel openssl-devel php-devel
-```
-
-> These packages cover common compilation requirements. Additional dependencies may be required depending on your PHP configuration.
 
 ---
 
@@ -112,6 +104,7 @@ extension=duckdb.so
 
 Pre-built binaries for popular Linux distributions and architectures will be published soon, making installation much simpler without compiling from source.
 
+---
 
 ## Creating a Connection
 
