@@ -9,7 +9,7 @@ This extension delivers fast on‑disk and in‑memory SQL, **prepared statement
 > - **Streaming result** iteration over millions of rows.  
 > - **Bulk inserts** via Appender (with `flush()` for immediate visibility).  
 > - **Flexible fetching** (objects by default, associative arrays optional).  
-> - **Clear exceptions** via `Fnvoid\DuckDB\Exception`.
+> - **Clear exceptions** via `\Fnvoid\DuckDB\Exception`.
 
 ---
 
@@ -111,8 +111,8 @@ Pre-built binaries for popular Linux distributions and architectures will be pub
 ### In‑memory
 ```php
 try {
-    $db = new Fnvoid\DuckDB\DuckDB(); // In‑memory database
-} catch (Fnvoid\DuckDB\Exception $e) {
+    $db = new \Fnvoid\DuckDB\DuckDB(); // In‑memory database
+} catch (\Fnvoid\DuckDB\Exception $e) {
     echo $e->getMessage();
 }
 ```
@@ -120,8 +120,8 @@ try {
 ### File‑backed
 ```php
 try {
-    $db = new Fnvoid\DuckDB\DuckDB('/path/to/db');
-} catch (Fnvoid\DuckDB\Exception $e) {
+    $db = new \Fnvoid\DuckDB\DuckDB('/path/to/db');
+} catch (\Fnvoid\DuckDB\Exception $e) {
     echo $e->getMessage();
 }
 ```
@@ -131,15 +131,15 @@ You can pass DuckDB configuration either as the second argument or via a named `
 
 ```php
 try {
-    $db = new Fnvoid\DuckDB\DuckDB('/path/to/db', [
+    $db = new \Fnvoid\DuckDB\DuckDB('/path/to/db', [
         'threads' => 8,
     ]);
 
     // or using a named argument:
-    $db = new Fnvoid\DuckDB\DuckDB(config: [
+    $db = new \Fnvoid\DuckDB\DuckDB(config: [
         'threads' => 8,
     ]);
-} catch (Fnvoid\DuckDB\Exception $e) {
+} catch (\Fnvoid\DuckDB\Exception $e) {
     echo $e->getMessage();
 }
 ```
@@ -147,13 +147,13 @@ try {
 ---
 
 ## Query Execution
-`Fnvoid\DuckDB\DuckDB::query()` returns a `Fnvoid\DuckDB\Result` object that you can fetch from.
+`\Fnvoid\DuckDB\DuckDB::query()` returns a `\Fnvoid\DuckDB\Result` object that you can fetch from.
 
 ```php
 try {
-    $db = new Fnvoid\DuckDB\DuckDB(); // In‑memory
+    $db = new \Fnvoid\DuckDB\DuckDB(); // In‑memory
     $res = $db->query("CREATE TABLE test_table (id INT, name VARCHAR, age INT)");
-} catch (Fnvoid\DuckDB\Exception $e) {
+} catch (\Fnvoid\DuckDB\Exception $e) {
     echo $e->getMessage();
 }
 ```
@@ -162,15 +162,15 @@ try {
 
 ## Prepared Statements
 Prepared statements currently support **positional parameters only**.  
-`Fnvoid\DuckDB\DuckDB::prepare()` returns a `Fnvoid\DuckDB\Statement`.
+`\Fnvoid\DuckDB\DuckDB::prepare()` returns a `\Fnvoid\DuckDB\Statement`.
 
 ```php
 try {
-    $db = new Fnvoid\DuckDB\DuckDB();
+    $db = new \Fnvoid\DuckDB\DuckDB();
     $stmt = $db->prepare("SELECT * FROM test_table WHERE id = ?");
     $res  = $stmt->execute([1]);
     $row  = $res->fetchOne(); // Fetch a single row
-} catch (Fnvoid\DuckDB\Exception $e) {
+} catch (\Fnvoid\DuckDB\Exception $e) {
     echo $e->getMessage();
 }
 ```
@@ -184,14 +184,14 @@ Efficient, lazy iteration suitable for very large result sets.
 
 ```php
 try {
-    $db = new Fnvoid\DuckDB\DuckDB();
+    $db = new \Fnvoid\DuckDB\DuckDB();
     $stmt = $db->prepare("SELECT * FROM test_table WHERE status = ?");
     $res  = $stmt->execute([1]);
 
     foreach ($res->iterate() as $row) {
         // Process row
     }
-} catch (Fnvoid\DuckDB\Exception $e) {
+} catch (\Fnvoid\DuckDB\Exception $e) {
     echo $e->getMessage();
 }
 ```
@@ -221,7 +221,7 @@ Data is **not immediately visible** to queries until you call `flush()`.
 
 ```php
 try {
-    $db = new Fnvoid\DuckDB\DuckDB();
+    $db = new \Fnvoid\DuckDB\DuckDB();
     $appender = $db->createAppender('table_name');
 
     foreach ($someLocalData as $row) {
@@ -236,7 +236,7 @@ try {
     $appender->flush();
 
     $res = $db->query("SELECT * FROM table_name");
-} catch (Fnvoid\DuckDB\Exception $e) {
+} catch (\Fnvoid\DuckDB\Exception $e) {
     echo $e->getMessage();
 }
 ```
@@ -253,7 +253,7 @@ Run your own **PHP code inside DuckDB SQL**. This is a major feature for many wo
 
 ```php
 try {
-    $db = new Fnvoid\DuckDB\DuckDB(config: [
+    $db = new \Fnvoid\DuckDB\DuckDB(config: [
         'threads' => 1, // Required for UDFs
     ]);
 
@@ -267,7 +267,7 @@ try {
     ");
 
     $row = $stmt->execute([1])->fetchOne();
-} catch (Fnvoid\DuckDB\Exception $e) {
+} catch (\Fnvoid\DuckDB\Exception $e) {
     echo $e->getMessage();
 }
 ```
@@ -275,12 +275,12 @@ try {
 ---
 
 ## Errors & Exceptions
-All failures throw `Fnvoid\DuckDB\Exception`. Wrap calls in `try/catch` to handle errors gracefully.
+All failures throw `\Fnvoid\DuckDB\Exception`. Wrap calls in `try/catch` to handle errors gracefully.
 
 ```php
 try {
-    $db = new Fnvoid\DuckDB\DuckDB('/invalid/path');
-} catch (Fnvoid\DuckDB\Exception $e) {
+    $db = new \Fnvoid\DuckDB\DuckDB('/invalid/path');
+} catch (\Fnvoid\DuckDB\Exception $e) {
     // Log / rethrow / surface message
     error_log($e->getMessage());
 }

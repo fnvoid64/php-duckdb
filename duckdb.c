@@ -476,6 +476,9 @@ static void php_duckdb_udf_callback(duckdb_function_info info, duckdb_data_chunk
 			
 			for (uint32_t i = 0; i < fci.param_count; i++) {
 				zval_ptr_dtor(&fci.params[i]);
+			}
+
+			if (fci.params) {
 				efree(fci.params);
 			}
 
@@ -487,6 +490,9 @@ static void php_duckdb_udf_callback(duckdb_function_info info, duckdb_data_chunk
 		if (EG(exception)) {
 			for (uint32_t i = 0; i < fci.param_count; i++) {
 				zval_ptr_dtor(&fci.params[i]);
+			}
+
+			if (fci.params) {
 				efree(fci.params);
 			}
 
@@ -538,7 +544,6 @@ static void php_duckdb_udf_callback(duckdb_function_info info, duckdb_data_chunk
 
 		for (uint32_t i = 0; i < fci.param_count; i++) {
 			zval_ptr_dtor(&fci.params[i]);
-			efree(fci.params);
 		}
 		
 		zval_ptr_dtor(&retval);
