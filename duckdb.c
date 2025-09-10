@@ -469,6 +469,7 @@ static void php_duckdb_udf_callback(duckdb_function_info info, duckdb_data_chunk
 		}
 
 		zval retval;
+		ZVAL_UNDEF(&retval);
 		fci.retval = &retval;
 
 		if (zend_call_function(&fci, &udf->fcc) != SUCCESS) {
